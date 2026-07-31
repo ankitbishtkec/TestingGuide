@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What to Validate During Testing</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f6f8; color: #333; padding: 20px; }
+  h1 { text-align: center; margin-bottom: 6px; font-size: 1.6em; color: #1a1a2e; }
+  .subtitle { text-align: center; color: #666; margin-bottom: 24px; font-size: 0.9em; }
+  .container { display: flex; gap: 24px; max-width: 1600px; margin: 0 auto; flex-wrap: wrap; }
+  .panel { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .panel-input { flex: 0 0 40%; min-width: 380px; }
+  .panel-output { flex: 0 0 57%; min-width: 380px; }
+  .panel h2 { font-size: 1.1em; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid; }
+  .panel-input h2 { color: #0052cc; border-color: #0052cc; }
+  .panel-output h2 { color: #d63384; border-color: #d63384; }
+  .slider-group { margin-bottom: 16px; }
+  .slider-group label { display: block; font-weight: 600; font-size: 0.82em; margin-bottom: 3px; }
+  input[type=range] { width: 100%; height: 6px; -webkit-appearance: none; appearance: none; background: #ddd; border-radius: 3px; outline: none; margin: 3px 0 2px 0; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; cursor: pointer; }
+  .panel-input input[type=range]::-webkit-slider-thumb { background: #0052cc; }
+  .panel-output input[type=range]::-webkit-slider-thumb { background: #d63384; }
+  .tick-labels { display: flex; justify-content: space-between; margin-top: 1px; }
+  .tick-labels span { font-size: 0.63em; color: #999; text-align: center; flex: 1; cursor: pointer; padding: 2px 1px; border-radius: 3px; transition: all 0.15s; line-height: 1.15; }
+  .tick-labels span.active { color: #fff; font-weight: 700; }
+  .panel-input .tick-labels span.active { background: #0052cc; }
+  .panel-output .tick-labels span.active { background: #d63384; }
+  .score-box { margin-top: 14px; padding: 12px; border-radius: 8px; text-align: center; font-size: 1.05em; font-weight: 700; }
+  .score-box.input-score { background: #e8f0fe; color: #0052cc; }
+  .score-box.output-score { background: #fce4ec; color: #d63384; }
+  .legend { font-size: 0.72em; color: #888; margin-top: 6px; text-align: center; }
+  .risk-bar { height: 12px; border-radius: 6px; margin-top: 8px; transition: width 0.3s; }
+  .section-title { font-size: 0.78em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin: 18px 0 8px 0; padding: 4px 8px; border-radius: 4px; }
+  .section-title.s-db { color: #0d6efd; background: #e8f0fe; }
+  .section-title.s-cache { color: #6f42c1; background: #f3eaff; }
+  .section-title.s-api { color: #0a7c5a; background: #e6f7f0; }
+  .section-title.s-queue { color: #d4600a; background: #fff3e6; }
+  .section-title.s-state { color: #6c757d; background: #f0f0f0; }
+  .section-title.s-product { color: #b02a6e; background: #fce4f0; }
+  .section-title.s-silent { color: #dc3545; background: #fde8ea; }
+  .section-title:first-child { margin-top: 0; }
+  .section-title.s-jobs { color: #087f5b; background: #e6fcf5; }
+  .section-title.s-dash { color: #5f3dc4; background: #f3f0ff; }
+  .tip-hint { font-size: 0.7em; color: #333; text-align: center; margin-bottom: 12px; font-style: italic; }
+</style>
+</head>
+<body>
+
+<h1>What to Validate During Testing</h1>
+<p class="subtitle">Set your current dev environment on the left &rarr; see required testing areas on the right</p>
+<p class="tip-hint">Hover over any label and hold for a second to see a plain-English explanation of what it means. Use desktop for best viewing experience.</p>
+
+<div class="container">
+
+<!-- INPUT PANEL -->
+<div class="panel panel-input">
+  <h2>Developer Environment (Current State)</h2>
+  <div id="input_sliders"></div>
+  <div class="score-box input-score" id="env_score"></div>
+</div>
+
+<!-- OUTPUT PANEL -->
+<div class="panel panel-output">
+  <h2>Validation Areas &amp; Depth Required</h2>
+  <div id="output_sliders"></div>
+  <div class="score-box output-score" id="out_score"></div>
+  <div class="legend" id="risk_label"></div>
+  <div style="background:#eee;border-radius:6px;margin-top:4px;overflow:hidden;">
+    <div class="risk-bar" id="risk_bar"></div>
+  </div>
+</div>
+
+</div>
+
+<script>
+var inputConfig = [
+  {id:"ut", label:"Unit Testing Maturity", defaultVal:4,
+    ticks:["No UTs","Contract-based","File-ownership","Result-based","Behaviour-driven","Coverage gate on PR","Mutation testing","Fuzz testing"],
+    tips:[
+      "No unit tests exist at all. You ship and pray.",
+      "Tests check that function signatures and interfaces match — like checking the plug fits the socket, but not if the appliance works.",
+      "Each file has its own test file. You test functions in isolation but don't check how they work together.",
+      "Tests check that given input X, you get output Y. Focused on correct results.",
+      "Tests describe expected behavior in plain language: 'when user logs in, session is created'. Most readable and maintainable.",
+      "PRs are blocked if test coverage drops below a threshold (e.g., 80%). Enforced automatically in CI.",
+      "Tests automatically change your code slightly (e.g., flip an if-condition) and check if tests catch it. Finds weak tests.",
+      "Feeds random/garbage input to your code to find crashes and edge cases you'd never think of."
+    ]},
+  {id:"it", label:"Integration Testing", defaultVal:2,
+    ticks:["No integration tests","IT local only","IT in staging","IT in pre-prod","IT automated in CI","Contract + IT in CI"],
+    tips:[
+      "No tests that check if different parts of your system work together.",
+      "Integration tests run only on your laptop — may pass locally but fail elsewhere.",
+      "Tests run against a shared staging environment that mimics production.",
+      "Tests run against pre-production — closest to real prod without being prod.",
+      "Integration tests run automatically on every PR/push in your CI pipeline.",
+      "Both contract tests (do APIs match their spec?) and integration tests run automatically in CI. Gold standard."
+    ]},
+  {id:"e2e", label:"E2E Testing", defaultVal:1,
+    ticks:["No E2E","Ad-hoc manual","Documented manual suite","Semi-automated","Fully automated","E2E in CI pipeline","E2E + visual regression"],
+    tips:[
+      "Nobody tests the full user journey from start to finish.",
+      "Someone manually clicks around to see if things work. No script, no checklist — just vibes.",
+      "There's a written checklist of scenarios to test manually (e.g., 'login, create order, check email').",
+      "Some E2E tests are scripted (e.g., Selenium/Playwright) but some steps are still manual.",
+      "All critical user journeys are automated — no human clicking needed.",
+      "E2E tests run automatically on every PR in CI. Broken flows block the merge.",
+      "Automated E2E + the tool takes screenshots and flags any visual differences (e.g., button moved 2px)."
+    ]},
+  {id:"env", label:"Testing Environment", defaultVal:3,
+    ticks:["No test env","Local only","Shared dev cluster","Unstable staging","Stable staging","Pre-prod mirror"],
+    tips:[
+      "No dedicated environment for testing. You test in prod or not at all.",
+      "You can only test on your own machine. No shared infrastructure.",
+      "A shared cluster where multiple devs deploy — may be noisy and unreliable.",
+      "A staging environment exists but it's flaky — data is stale, services go down randomly.",
+      "A stable staging environment with fresh data and reliable uptime.",
+      "An environment that mirrors production exactly — same data volume, same config, same infra."
+    ]},
+  {id:"doc", label:"Testing Documentation", defaultVal:0,
+    ticks:["No docs","Informal notes","Wiki test plans","Documented test matrix","Living docs in repo","Auto-generated reports"],
+    tips:[
+      "No documentation about what to test or how. Knowledge lives in people's heads.",
+      "Some notes in Slack/Notion/Google Docs — scattered, possibly outdated.",
+      "Formal test plans on a wiki. Structured but may go stale over time.",
+      "A matrix showing: feature X scenario Y, what to test, expected result. Comprehensive.",
+      "Test documentation lives in the repo alongside code — updated with every PR.",
+      "Test reports are generated automatically from test runs showing coverage, pass/fail, trends."
+    ]},
+  {id:"team", label:"Dedicated Testing Team", defaultVal:1,
+    ticks:["No QA resource","Dev self-test","Part-time QA","Dedicated QA engineer","QA team with lead","QA org + architects"],
+    tips:[
+      "No one is responsible for testing. It's nobody's job.",
+      "Developers test their own code. Better than nothing, but devs have blind spots about their own code.",
+      "Someone does QA part-time alongside other duties.",
+      "A full-time QA engineer focused on testing your product.",
+      "A QA team with a lead who plans test strategy and coordinates efforts.",
+      "A full QA organization with test architects who design frameworks and set testing standards."
+    ]},
+  {id:"cicd", label:"CI/CD Pipeline Maturity", defaultVal:5,
+    ticks:["No CI/CD","Manual scripts","Basic CI (build+lint)","CI + auto tests","CD to staging","Full CD + canary"],
+    tips:[
+      "No automated build or deploy pipeline. Everything is manual.",
+      "Someone runs shell scripts to build and deploy. Error-prone and person-dependent.",
+      "CI automatically builds your code and checks for lint errors on every push.",
+      "CI runs your full test suite automatically. Broken tests block the merge.",
+      "Code automatically deploys to staging after passing CI. One step from prod.",
+      "Full continuous delivery with canary releases (deploy to 1% of users first) and automatic rollback if errors spike."
+    ]},
+  {id:"review", label:"Code Review Culture", defaultVal:2,
+    ticks:["No reviews","Optional reviews","Required 1 reviewer","Required 2+ reviewers","Review + auto checks"],
+    tips:[
+      "Code goes straight to main. No one else looks at it.",
+      "Reviews happen sometimes, but it's not enforced. Easy to skip.",
+      "Every PR needs at least 1 approval. Someone else always looks at your code.",
+      "Every PR needs 2+ approvals. More eyes = more bugs caught.",
+      "Reviews required + automated checks (linting, security scans, test coverage) must pass before merge."
+    ]},
+  {id:"obs", label:"Observability & Monitoring", defaultVal:2,
+    ticks:["No monitoring","Basic health checks","Logs + error tracking","APM + dashboards","Full observability + SLOs"],
+    tips:[
+      "No way to know if your service is healthy in production.",
+      "Simple up/down health checks — you know it's running but not if it's working correctly.",
+      "You can search logs and get alerted on errors (e.g., Sentry, ELK).",
+      "Application Performance Monitoring — you can see request latency, throughput, and error rates on dashboards (e.g., Datadog, Grafana).",
+      "Full observability: traces, metrics, logs correlated. SLOs defined (e.g., 99.9% of requests < 200ms). Alerts when budget burns."
+    ]},
+  {id:"scale", label:"Scale Runs", defaultVal:0,
+    ticks:["No runs","Manual on local","Scheduled on local","On-demand shared env","Dedicated perf env","Prod-like load env"],
+    tips:[
+      "No performance or load testing at all.",
+      "You manually run a load test from your laptop (e.g., 'hey' or 'ab' command).",
+      "Load tests run on a schedule locally (e.g., nightly cron on a dev machine).",
+      "You can spin up load tests on-demand in a shared environment.",
+      "A dedicated environment just for performance testing with realistic data.",
+      "Load tests run against a prod-like environment with prod-level traffic volumes."
+    ]}
+];
+
+var outputConfig = [
+  // Database
+  {id:"o_dbw", section:"Database", sclass:"s-db", label:"DB Write Validation",
+    ticks:["Skip","Check 200 / status","Check failure logs","Query DB records directly","Fetch via read API","Data integrity + constraints + rollback"],
+    tips:[
+      "Don't validate DB writes at all.",
+      "Just check the API returned 200. You trust it wrote correctly, but you didn't verify.",
+      "Look at application logs to see if any write errors were logged. Catches crashes but not wrong data.",
+      "Connect to the DB and SELECT the row you just wrote. Verify the data is actually there and correct.",
+      "Call a read API to fetch the data back. Proves the full write+read path works end-to-end.",
+      "Verify foreign keys, unique constraints, NOT NULL rules hold. Test rollback: if step 3 of 5 fails, did steps 1-2 get rolled back?"
+    ],
+    drivers:function(s){return 1-0.3*s.ut-0.25*s.it-0.2*s.env-0.15*s.obs-0.1*s.doc;}},
+  {id:"o_dbr", label:"DB Read Validation",
+    ticks:["Skip","Check response code","Validate response shape","Validate data values","Check query perf + pagination","Edge cases + empty + large sets"],
+    tips:[
+      "Don't validate DB reads at all.",
+      "Just check you got a 200 back, not a 500.",
+      "Check the JSON has the right fields and types. e.g., 'id' is a number, 'name' is a string.",
+      "Check the actual values are correct. e.g., you inserted price=100, does the read return 100?",
+      "Check the query is fast enough. Does pagination work? Page 2 shows different results than page 1?",
+      "What happens with 0 results? 10,000 results? NULL fields? Special characters in data?"
+    ],
+    drivers:function(s){return 1-0.3*s.ut-0.25*s.it-0.2*s.e2e-0.15*s.scale-0.1*s.obs;}},
+
+  // Cache
+  {id:"o_cw", section:"Cache", sclass:"s-cache", label:"Cache Write Validation",
+    ticks:["Skip","Check status code","Check logs for cache set","Validate hit rate change","Inspect cached data directly","TTL + eviction + consistency check"],
+    tips:[
+      "Don't validate cache writes.",
+      "Just check the operation didn't error out.",
+      "Look at logs to confirm 'cache SET key=X' appeared.",
+      "Check metrics: did the cache hit rate go up after your write? Proves the cache is actually being used.",
+      "Connect to Redis/Memcached directly and GET the key. Verify the cached value matches what you wrote.",
+      "Check: does the cache entry expire after the expected TTL? When cache is full, is the right key evicted? Is cached data consistent with DB?"
+    ],
+    drivers:function(s){return 1-0.25*s.ut-0.25*s.it-0.2*s.obs-0.15*s.env-0.15*s.doc;}},
+  {id:"o_cr", label:"Cache Read Validation",
+    ticks:["Skip","Check response","Validate hit vs miss","Compare with source of truth","Latency w/ vs w/o cache","Stale data + thundering herd"],
+    tips:[
+      "Don't validate cache reads.",
+      "Just check you got a response back.",
+      "Check if the response came from cache (HIT) or from the DB (MISS). Are HITs happening when expected?",
+      "Compare cached data with the actual DB. Are they the same? If you updated the DB, did the cache update too?",
+      "Measure response time with cache vs without. Is cache actually making things faster?",
+      "Test: update DB, is cache serving old data? If cache goes down, do 1000 requests all hit DB at once (thundering herd)?"
+    ],
+    drivers:function(s){return 1-0.25*s.ut-0.2*s.it-0.2*s.obs-0.2*s.scale-0.15*s.e2e;}},
+
+  // API / gRPC
+  {id:"o_api", section:"API / gRPC Exposed", sclass:"s-api", label:"REST API Response",
+    ticks:["Skip","Check status code","Validate response schema","Validate business logic","Error + edge scenarios","Load + contract + backward compat"],
+    tips:[
+      "Don't test the API at all.",
+      "Just hit the endpoint and check you get 200, not 500. The bare minimum.",
+      "Check the JSON shape: are all expected fields present? Are types correct? e.g., 'id' should be a number not a string.",
+      "Check the values make sense. e.g., total should equal sum of items. A discount shouldn't make price negative. Business rules are enforced.",
+      "Send bad input, missing fields, expired tokens, huge payloads, special characters. Does it return proper error codes (400, 401, 422)?",
+      "Hit it with 1000 req/s — does it hold up? Test against an API spec (OpenAPI). Add a new field — do old clients still work?"
+    ],
+    drivers:function(s){return 1-0.25*s.ut-0.2*s.it-0.2*s.e2e-0.15*s.review-0.1*s.cicd-0.1*s.doc;}},
+  {id:"o_grpc", label:"gRPC Validation",
+    ticks:["Skip","Check status code","Validate protobuf shape","Validate streaming / unary","Error codes + deadlines","Backward compat + reflection"],
+    tips:[
+      "Don't test gRPC calls at all.",
+      "Call the RPC method and check you get OK status, not INTERNAL or UNKNOWN.",
+      "Check the protobuf response has all expected fields per the .proto file. Like checking JSON shape, but for protobuf.",
+      "Unary = send 1 request, get 1 response (like normal REST). Streaming = server sends multiple responses over time (like a live feed). Test both work correctly.",
+      "Test gRPC-specific failures: DEADLINE_EXCEEDED when call is too slow, NOT_FOUND for missing data, UNAVAILABLE when service is down. Set a 100ms deadline on a 2s call — does it timeout properly?",
+      "You renamed a proto field — do old clients still work? Reflection = can clients discover your API methods dynamically without the .proto file?"
+    ],
+    drivers:function(s){return 1-0.25*s.ut-0.25*s.it-0.2*s.review-0.15*s.cicd-0.15*s.doc;}},
+  {id:"o_gw", label:"API Gateway / Auth",
+    ticks:["Skip","Check routing works","Validate auth / tokens","Rate limiting + throttle","Header propagation + CORS","Circuit breaker + failover"],
+    tips:[
+      "Don't test gateway behavior.",
+      "Hit /v2/users — does it reach the users service, not orders? Basic routing sanity check.",
+      "Test: expired token = 401? No token = 403? Wrong role = forbidden? Can a regular user access admin endpoints?",
+      "Send 200 requests/sec when limit is 100 — do you get 429 Too Many Requests? Does the backend stay safe?",
+      "Headers: does Trace-ID from the client reach the backend? CORS: can your frontend at app.example.com call api.example.com without browser errors?",
+      "Backend returns 500 ten times in a row — does the gateway stop sending it traffic (circuit open)? Does it failover to a backup?"
+    ],
+    drivers:function(s){return 1-0.2*s.ut-0.2*s.it-0.2*s.e2e-0.2*s.review-0.1*s.obs-0.1*s.env;}},
+  {id:"o_dep", label:"Dependency / Contract Changes",
+    ticks:["Skip","Check it compiles","Smoke test happy path","Validate all callers","Test deprecated paths","Full contract + version matrix"],
+    tips:[
+      "Don't check if your change breaks anyone who depends on you.",
+      "It compiles and starts — you assume consumers are fine.",
+      "Call the main endpoint once with normal input. If it works, ship it.",
+      "Identify every service/client that calls you. Test each one still works after your change.",
+      "You removed or changed an old field/endpoint — test that clients using the old version still get a proper response or clear error.",
+      "Test every version of your API that's still in use. Run contract tests (e.g., Pact) to prove no consumer is broken. Test with old + new clients simultaneously."
+    ],
+    drivers:function(s){return 1-0.25*s.ut-0.2*s.it-0.2*s.review-0.2*s.e2e-0.15*s.doc;}},
+
+  // Jobs / Scheduled Tasks
+  {id:"o_job_exec", section:"Jobs / Scheduled Tasks", sclass:"s-jobs", label:"Job Execution Validation",
+    ticks:["Skip","Check job started","Check job completed","Validate output / side effects","Timeout + failure handling","Retry + idempotency + overlap"],
+    tips:[
+      "Don't validate if jobs run at all.",
+      "Check the job scheduler / logs — did the job start? Is it showing up in the queue?",
+      "The job started AND finished without errors. Check the exit code or completion log.",
+      "The job was supposed to do something (send emails, update records, generate reports). Did that actually happen? Check the output.",
+      "What if the job takes 10x longer than expected? Does it timeout? Is the timeout configured? What happens on failure — does it alert anyone or fail silently?",
+      "If a job fails halfway, does it retry? Does retrying cause duplicates (e.g., sending the same email twice)? If two runs overlap, do they conflict?"
+    ],
+    drivers:function(s){return 1-0.2*s.ut-0.2*s.it-0.2*s.obs-0.2*s.cicd-0.1*s.env-0.1*s.doc;}},
+  {id:"o_job_dep", label:"Job Dependency Chain",
+    ticks:["Skip","Check job triggers next","Validate chain order","Test partial chain failure","Backfill + re-run safety","Full DAG validation + SLA"],
+    tips:[
+      "Don't check if dependent jobs are affected by your change.",
+      "Job A finishes — does Job B start? Just check the trigger fires.",
+      "Jobs run in the right order: A then B then C. Not C before A.",
+      "Job B fails — does Job C still run? Does it wait? Does the whole pipeline stop or does it skip and continue with stale data?",
+      "You need to re-run yesterday's job. Is it safe? Will it overwrite today's data? Can you backfill a specific date range without side effects?",
+      "Validate the full dependency graph (DAG). All jobs complete within their SLA. Alert if any job is overdue. No orphaned or zombie jobs."
+    ],
+    drivers:function(s){return 1-0.2*s.it-0.2*s.obs-0.2*s.cicd-0.15*s.e2e-0.15*s.doc-0.1*s.env;}},
+  {id:"o_job_sched", label:"Schedule + Resource Validation",
+    ticks:["Skip","Check cron is set","Verify run frequency","Resource limits (CPU/mem)","Concurrency + lock handling","Drift detection + alerting"],
+    tips:[
+      "Don't verify the job schedule or resources.",
+      "The cron expression exists — you trust it's correct but haven't verified the actual run times.",
+      "Verify the job actually runs at the expected frequency. e.g., 'every 5 min' means you see runs at :00, :05, :10, not random gaps.",
+      "Does the job have CPU/memory limits? What happens when it hits the limit — does it get killed (OOMKilled) or throttled? Is the limit set correctly for the data volume?",
+      "Two instances of the same job try to run at once — is there a lock? Does the second one wait, skip, or cause corruption? Are locks released on failure?",
+      "The job was supposed to run at 3am but ran at 3:47am. Do you detect schedule drift? Are there alerts when a job is overdue or skipped?"
+    ],
+    drivers:function(s){return 1-0.2*s.obs-0.2*s.cicd-0.2*s.env-0.15*s.scale-0.15*s.team-0.1*s.doc;}},
+
+  // Kafka / Message Queue
+  {id:"o_kp", section:"Kafka / Message Queue", sclass:"s-queue", label:"Kafka Produce",
+    ticks:["Skip","Check for errors in logs","Consume + eyeball message","Schema + key validation","Ordering + partitioning","Exactly-once + DLQ on failure"],
+    tips:[
+      "Don't validate message production.",
+      "Just check your app logs for any Kafka producer errors.",
+      "Manually consume from the topic and eyeball the message — does it look right?",
+      "Validate the message matches the expected schema (e.g., Avro/Protobuf). Is the partition key correct for ordering?",
+      "Are messages in the right order? Are they going to the expected partition? e.g., all events for user-123 should be on the same partition.",
+      "If you produce the same message twice, is it deduplicated? If production fails, does the message go to a Dead Letter Queue instead of being lost silently?"
+    ],
+    drivers:function(s){return 1-0.2*s.ut-0.25*s.it-0.2*s.obs-0.15*s.env-0.1*s.cicd-0.1*s.doc;}},
+  {id:"o_kc", label:"Kafka Consume",
+    ticks:["Skip","Check consumer lag","Verify processing logs","Validate side effects","DLQ + retry behavior","Replay + reprocessing + offset"],
+    tips:[
+      "Don't validate message consumption.",
+      "Check consumer group lag — are you falling behind? If lag keeps growing, consumers can't keep up.",
+      "Check logs: did the consumer process the message? Any errors during processing?",
+      "The consumer was supposed to write to DB or call an API — did that actually happen? Verify the downstream effect.",
+      "If processing fails, does it retry? After N retries, does it go to a Dead Letter Queue? Or does it block the whole partition?",
+      "Can you replay old messages safely (idempotent processing)? If you reset offsets, does reprocessing produce correct results without duplicates?"
+    ],
+    drivers:function(s){return 1-0.2*s.ut-0.25*s.it-0.2*s.obs-0.15*s.env-0.1*s.cicd-0.1*s.e2e;}},
+
+  // State
+  {id:"o_state", section:"State Changes", sclass:"s-state", label:"State Mutation",
+    ticks:["Skip","Check logs","Verify new state","Validate transition rules","Idempotency check","Concurrent mutation + race"],
+    tips:[
+      "Don't validate state changes.",
+      "Check logs to see if the state change was recorded.",
+      "Query the system and verify the state is now what you expect (e.g., order status = 'shipped').",
+      "Validate transitions are legal: can you go from 'shipped' back to 'draft'? Should that be blocked?",
+      "Call the same operation twice — does it produce the same result? Or does it create duplicates / charge twice?",
+      "Two users update the same record at the same time — who wins? Is data corrupted? Test with concurrent requests."
+    ],
+    drivers:function(s){return 1-0.3*s.ut-0.2*s.it-0.2*s.review-0.15*s.e2e-0.15*s.doc;}},
+  {id:"o_down", label:"Downstream Service Impact",
+    ticks:["Skip","Check downstream logs","Verify data received","Validate processing correct","E2E trace across services","SLA + latency + error budget"],
+    tips:[
+      "Don't check if downstream services are affected.",
+      "Look at the downstream service's logs — did it receive anything? Any errors?",
+      "Verify the downstream service actually got the data you sent. It's there, not just 'no errors'.",
+      "The downstream service processed your data — did it do the right thing with it? e.g., notification service sent the right email?",
+      "Trace a single request across all services end-to-end (e.g., via Datadog APM). See the full chain.",
+      "Check: did you break the downstream service's latency SLA? Are their error rates up? Are you consuming their error budget?"
+    ],
+    drivers:function(s){return 1-0.2*s.it-0.25*s.e2e-0.2*s.obs-0.15*s.env-0.1*s.cicd-0.1*s.team;}},
+
+  // Product / UI
+  {id:"o_ui", section:"Product / UI", sclass:"s-product", label:"UI Change Validation",
+    ticks:["Skip","Visual spot check","Functional click-through","Cross-browser check","Accessibility + responsive","Screenshot diff + visual regression"],
+    tips:[
+      "Don't check UI at all.",
+      "Quick glance — does it look obviously broken? Eyeball test.",
+      "Click through the flow: can you complete the task? Buttons work? Forms submit?",
+      "Test in Chrome, Firefox, Safari, mobile. Does it work everywhere?",
+      "Screen reader friendly? Keyboard navigable? Looks good on phone, tablet, desktop?",
+      "Automated tool takes before/after screenshots and highlights pixel differences. Catches subtle visual regressions."
+    ],
+    drivers:function(s){return 1-0.2*s.e2e-0.2*s.team-0.2*s.doc-0.2*s.cicd-0.1*s.review-0.1*s.env;}},
+  {id:"o_datavis", label:"Data Visible to Other Services",
+    ticks:["Skip","Check data shows up","Validate format + schema","Validate timeliness / freshness","Cross-service consistency","Audit trail + lineage"],
+    tips:[
+      "Don't check if other services can see your data.",
+      "Log in to the other service / dashboard — can you see the data at all?",
+      "Is the data in the expected format? Right field names, right types, right units?",
+      "Is the data fresh? If you updated 5 mins ago, does the other service show the update or stale data?",
+      "Service A shows price=100, Service B shows price=100. Are they in sync? What about during deploys?",
+      "Can you trace where data came from, who changed it, when? Full lineage from source to consumer."
+    ],
+    drivers:function(s){return 1-0.2*s.it-0.2*s.e2e-0.2*s.obs-0.15*s.doc-0.15*s.team-0.1*s.env;}},
+
+  // Dashboard / Monitoring
+  {id:"o_dash_resp", section:"Dashboard / Monitoring", sclass:"s-dash", label:"Response Type + Count Anomaly",
+    ticks:["Skip","Eyeball dashboard","Check 2xx/4xx/5xx ratio","Baseline comparison","Anomaly detection on status codes","Auto-alert on distribution shift"],
+    tips:[
+      "Don't check dashboards at all after deploying.",
+      "Glance at the dashboard — does anything look obviously wrong? No numbers, just vibes.",
+      "Check the ratio of success (2xx) vs client errors (4xx) vs server errors (5xx). Is 5xx higher than usual?",
+      "Compare current response code distribution with the previous release. e.g., 5xx was 0.1%, now it's 2% — that's a problem.",
+      "Set up anomaly detection: if the ratio of 4xx or 5xx responses changes significantly from the norm, flag it automatically.",
+      "Automated alerts fire when the response code distribution shifts. e.g., suddenly 30% of responses are 429 (throttled) — pager goes off."
+    ],
+    drivers:function(s){return 1-0.3*s.obs-0.2*s.cicd-0.2*s.e2e-0.15*s.env-0.15*s.team;}},
+  {id:"o_dash_perf", label:"Response Time + Latency Anomaly",
+    ticks:["Skip","Check avg response time","Check p50 / p95 / p99","Compare with baseline","Anomaly detection on latency","Auto-alert on SLO breach"],
+    tips:[
+      "Don't check response times.",
+      "Look at average response time — is it roughly what you expect? (Averages hide problems though.)",
+      "Check percentiles: p50 = typical user, p95 = slow users, p99 = worst case. If p99 is 10x the p50, something is wrong for some users.",
+      "Compare current latency percentiles with the previous release. p95 went from 200ms to 800ms? Your change made it slower.",
+      "Anomaly detection flags unusual latency spikes automatically. No need to stare at dashboards.",
+      "SLO says 99.9% of requests under 500ms. Alert fires the moment you start burning through that error budget."
+    ],
+    drivers:function(s){return 1-0.3*s.obs-0.2*s.scale-0.2*s.cicd-0.15*s.env-0.15*s.e2e;}},
+  {id:"o_dash_err", label:"Error Rate + Failure Pattern",
+    ticks:["Skip","Check error count","Check error rate %","Compare with pre-deploy","Anomaly on error patterns","Correlated multi-signal alerts"],
+    tips:[
+      "Don't monitor error rates.",
+      "Look at total error count. Is it zero? Probably fine. Is it 5000? Probably not.",
+      "Error rate as a percentage of total requests. 0.1% is normal for most services. 5% means something is broken.",
+      "Compare error rate now vs 1 hour before deploy. If it jumped, your change likely caused it.",
+      "Detect patterns: errors spike every 5 minutes (cron job?), errors only for one endpoint, errors only from one datacenter. Automated pattern detection.",
+      "Correlate error rate with latency, CPU, memory, and downstream health. Alert says: 'error rate up AND memory usage at 95% AND downstream DB slow' — gives you the full picture."
+    ],
+    drivers:function(s){return 1-0.3*s.obs-0.2*s.cicd-0.2*s.it-0.15*s.env-0.15*s.e2e;}},
+  {id:"o_dash_res", label:"Resource Usage (CPU / Memory)",
+    ticks:["Skip","Check pod not crashing","Check CPU / mem usage","Compare with pre-deploy","Set resource alerts","Capacity planning + forecast"],
+    tips:[
+      "Don't check resource usage after deploying.",
+      "Pods are running and not in CrashLoopBackOff. That's all you check.",
+      "Look at CPU and memory usage. Is CPU at 90%? Is memory climbing steadily (possible leak)?",
+      "Compare resource usage before and after your deploy. Your change added 200MB memory usage — is that expected?",
+      "Alerts fire when CPU > 80% or memory > 85%. You get warned before things crash, not after.",
+      "Track resource trends over weeks. At current growth rate, when will you run out? Do you need to scale up before the next traffic spike?"
+    ],
+    drivers:function(s){return 1-0.25*s.obs-0.25*s.scale-0.2*s.cicd-0.15*s.env-0.15*s.team;}},
+
+  // Silent Failures
+  {id:"o_silent", section:"Silent Failure Detection", sclass:"s-silent", label:"Silent Failure Coverage",
+    ticks:["Skip","Check error logs manually","Monitor metrics + alerts","DLQ + dead path inspection","Fault injection + chaos test","Canary comparison + anomaly detect"],
+    tips:[
+      "Don't look for silent failures. Hope for the best.",
+      "Manually grep through logs looking for errors. Time-consuming and easy to miss things.",
+      "Set up metrics (error rate, latency) with alerts. You get paged when something looks wrong.",
+      "Check Dead Letter Queues and dead code paths — are messages silently failing? Are there code branches that should fire but never do?",
+      "Intentionally break things (kill a pod, add latency, corrupt data) and see if your system handles it or fails silently.",
+      "Deploy to 1% of traffic (canary) and compare metrics with the other 99%. Anomaly detection flags unexpected changes automatically."
+    ],
+    drivers:function(s){return 1-0.25*s.obs-0.2*s.it-0.2*s.cicd-0.15*s.env-0.1*s.e2e-0.1*s.scale;}},
+  {id:"o_rollback", label:"Rollback / Recovery Validation",
+    ticks:["Skip","Know rollback exists","Test rollback manually","Automated rollback test","Canary + auto rollback","Blue-green + instant failover"],
+    tips:[
+      "No rollback plan. If it breaks, good luck.",
+      "You know there's a rollback button/command somewhere. You've never actually pressed it.",
+      "You've manually tested rolling back at least once. You know the steps and they work.",
+      "Rollback is tested automatically as part of CI/CD. You know it works because it's tested regularly.",
+      "Deploy to a small % first (canary). If error rate spikes, it automatically rolls back without human intervention.",
+      "Two full environments (blue + green). Traffic switches instantly. If green is bad, flip back to blue in seconds."
+    ],
+    drivers:function(s){return 1-0.25*s.cicd-0.2*s.env-0.2*s.obs-0.15*s.scale-0.1*s.team-0.1*s.e2e;}},
+
+  // Overall
+  {id:"o_confidence", section:"Overall", sclass:"s-state", label:"Release Confidence",
+    ticks:["Very Low","Low","Moderate","Good","High","Very High"],
+    tips:[
+      "You have almost no safety nets. Deploying is a leap of faith.",
+      "Some basic checks exist but major gaps. You'll likely find issues in production.",
+      "Decent coverage in some areas but notable blind spots remain.",
+      "Solid testing foundation. Most issues would be caught before production.",
+      "Strong safety nets across the board. Production surprises are rare.",
+      "Comprehensive validation at every layer. You deploy with full confidence."
+    ],
+    drivers:null}
+];
+
+function buildSliders(config, containerId, disabled) {
+  var container = document.getElementById(containerId);
+  for (var i = 0; i < config.length; i++) {
+    var c = config[i];
+    if (c.section) {
+      var sec = document.createElement("div");
+      sec.className = "section-title " + c.sclass;
+      sec.textContent = c.section;
+      container.appendChild(sec);
+    }
+    var group = document.createElement("div");
+    group.className = "slider-group";
+    var lbl = document.createElement("label");
+    lbl.textContent = c.label;
+    group.appendChild(lbl);
+    var slider = document.createElement("input");
+    slider.type = "range";
+    slider.id = c.id;
+    slider.min = "0";
+    slider.max = String(c.ticks.length - 1);
+    slider.value = c.defaultVal !== undefined ? String(c.defaultVal) : "0";
+    if (disabled) slider.disabled = true;
+    slider.oninput = calc;
+    group.appendChild(slider);
+    var tickRow = document.createElement("div");
+    tickRow.className = "tick-labels";
+    tickRow.id = c.id + "_ticks";
+    for (var j = 0; j < c.ticks.length; j++) {
+      var sp = document.createElement("span");
+      sp.textContent = c.ticks[j];
+      if (c.tips && c.tips[j]) sp.title = c.tips[j];
+      sp.setAttribute("data-slider", c.id);
+      sp.setAttribute("data-val", String(j));
+      if (!disabled) {
+        sp.onclick = function() {
+          var sl = document.getElementById(this.getAttribute("data-slider"));
+          sl.value = this.getAttribute("data-val");
+          calc();
+        };
+      }
+      tickRow.appendChild(sp);
+    }
+    group.appendChild(tickRow);
+    container.appendChild(group);
+  }
+}
+
+buildSliders(inputConfig, "input_sliders", false);
+buildSliders(outputConfig, "output_sliders", true);
+
+function highlightTicks(id, val) {
+  var ticks = document.getElementById(id + "_ticks");
+  if (!ticks) return;
+  var spans = ticks.getElementsByTagName("span");
+  for (var i = 0; i < spans.length; i++) {
+    spans[i].className = (i === val) ? "active" : "";
+  }
+}
+
+function calc() {
+  for (var i = 0; i < inputConfig.length; i++) {
+    var id = inputConfig[i].id;
+    highlightTicks(id, parseInt(document.getElementById(id).value));
+  }
+  var s = {};
+  for (var i = 0; i < inputConfig.length; i++) {
+    var el = document.getElementById(inputConfig[i].id);
+    s[inputConfig[i].id] = parseInt(el.value) / parseInt(el.max);
+  }
+  var weights = {ut:0.18, it:0.16, e2e:0.14, env:0.11, doc:0.07, team:0.09, cicd:0.09, review:0.04, obs:0.03, scale:0.09};
+  var maturity = 0;
+  for (var k in weights) maturity += s[k] * weights[k];
+  var totalEffort = 0, effortCount = 0;
+  for (var i = 0; i < outputConfig.length; i++) {
+    var c = outputConfig[i], val;
+    if (c.id === "o_confidence") {
+      val = clamp(Math.round(5 * maturity));
+    } else {
+      var raw = c.drivers(s);
+      val = clamp(Math.round((c.ticks.length - 1) * Math.max(0, Math.min(1, raw))));
+      totalEffort += val; effortCount++;
+    }
+    document.getElementById(c.id).value = val;
+    highlightTicks(c.id, val);
+  }
+  document.getElementById("env_score").textContent = "Environment Maturity: " + Math.round(maturity * 100) + "%";
+  var maxEffort = effortCount * 5;
+  var effortPct = Math.round((totalEffort / maxEffort) * 100);
+  document.getElementById("out_score").textContent = "Validation Rigor Required: " + effortPct + "%";
+  var bar = document.getElementById("risk_bar");
+  bar.style.width = effortPct + "%";
+  bar.style.background = effortPct > 75 ? "#dc3545" : effortPct > 50 ? "#fd7e14" : effortPct > 25 ? "#ffc107" : "#28a745";
+  document.getElementById("risk_label").textContent = effortPct > 75 ? "HIGH RISK - Validate everything deeply, no shortcuts" : effortPct > 50 ? "MEDIUM-HIGH - Thorough validation needed in most areas" : effortPct > 25 ? "MEDIUM - Targeted validation, focus on weak spots" : "LOW RISK - Light validation, strong safety nets in place";
+}
+
+function clamp(v) { return Math.max(0, Math.min(5, v)); }
+calc();
+</script>
+</body>
+</html>
